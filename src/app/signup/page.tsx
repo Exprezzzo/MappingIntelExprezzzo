@@ -1,17 +1,48 @@
-// src/app/signup/page.tsx
+"use client";
 
-// ... your imports ...
-// ... your signupFormSchema and SignupFormValues type definition (password IS required here) ...
+import { AuthLayout } from "@/components/auth/AuthLayout";
+import { AuthForm } from "@/components/auth/AuthForm";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/components/ui/use-toast";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { z } from "zod";
+import Link from "next/link";
+
+// This Zod schema MUST EXACTLY MATCH the 'signupSchema' defined in AuthForm.tsx
+// Specifically, it's formSchemaBase.extend({...}) from AuthForm.tsx
+const formSchemaBaseForPage = z.object({
+  email: z.string().email({ message: "Invalid email address." }),
+  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+});
+
+const signupFormSchema = formSchemaBaseForPage.extend({
+  displayName: z.string().min(2, { message: "Display name must be at least 2 characters." }).optional(),
+  confirmPassword: z.string(), // Matches AuthForm.tsx
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match.",
+  path: ["confirmPassword"],
+});
+
+// This type is now derived from the schema that matches AuthForm's internal signupSchema
+type SignupFormValues = z.infer<typeof signupFormSchema>;
 
 export default function SignupPage() {
   const router = useRouter();
+  const { signUpWithEmail } = useAuth(); // Assuming useAuth is correctly imported and provides signUpWithEmail
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
-  const handleSignup = async (values: SignupFormValues) => { // <<<< Ensure this parameter is `values: SignupFormValues`
+  // handleSignup now correctly expects SignupFormValues, which matches what AuthForm will provide
+  const handleSignup = async (values: SignupFormValues) => {
     setLoading(true);
     try {
+      // The 'values' object here has been validated by Zod inside AuthForm
+      // against the 'signupSchema' defined in AuthForm.
+      // So, values.password is guaranteed to be a string.
       await signUpWithEmail(values.email, values.password, values.displayName);
+
       toast({
         title: "Signup Successful",
         description: "Welcome! Your account has been created.",
@@ -19,9 +50,12 @@ export default function SignupPage() {
       router.push("/dashboard");
     } catch (error: any) {
       console.error("Signup Error:", error);
+      // No need to re-parse with Zod here if AuthForm already did it.
+      // The error here would be from signUpWithEmail or other logic.
       toast({
         title: "Signup Failed",
-        description: error.message || "An unexpected error occurred.",
+        description: error.message |
+| "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -30,19 +64,16 @@ export default function SignupPage() {
   };
 
   return (
-    <AuthLayout title="Create Your Account">
-      <AuthForm
-        mode="signup"
-        onSubmit={handleSignup} // This should now work if AuthForm is correctly typed internally for "signup" mode
-        loading={loading}
-      />
-      <SocialSignInButtons />
-      <div className="mt-6 text-center text-sm">
+    <AuthLayout title="Create Your Account" description="Enter your details below to create your account.">
+      <AuthForm mode="signup" onSubmit={handleSignup} loading={loading} />
+      {/* Assuming SocialSignInButtons is a component you have */}
+      {/* <SocialSignInButtons /> */}
+      <p className="mt-4 text-center text-sm text-muted-foreground">
         Already have an account?{" "}
-        <Link href="/login" className="font-semibold text-primary hover:text-primary/80">
-          Log In
-        </Link>
-      </div>
+        <Button variant="link" className="px-1" asChild>
+          <Link href="/login">Login</Link>
+        </Button>
+      </p>
     </AuthLayout>
   );
 }

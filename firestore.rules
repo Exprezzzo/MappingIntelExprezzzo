@@ -2,8 +2,46 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+    // Users collection
+    match /users/{userId} {
+      // Helper function to check if the requesting user is the owner of the document
+      function isOwner() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+      // Allow authenticated users to read their own profile document
+      allow read: if isOwner();
+
+      // User profile creation should be handled by a Cloud Function (e.g., onNewUserCreate).
+      // Therefore, client-side creation is disallowed.
+      allow create: if false;
+
+      // Allow authenticated users to update their own profile document,
+      // but only specific fields. Certain fields are immutable or server-managed.
+      allow update: if isOwner()
+                    // Ensure immutable fields are not changed if client includes them in the update:
+                    && request.resource.data.userId == resource.data.userId
+                    && request.resource.data.createdAt.toMillis() == resource.data.createdAt.toMillis()
+                    && request.resource.data.authProvider == resource.data.authProvider
+                    // Ensure fields not intended for client modification are not changed if included in the update:
+                    && (request.resource.data.email == resource.data.email || !('email' in request.resource.data))
+                    && (request.resource.data.phoneNumber == resource.data.phoneNumber || !('phoneNumber' in request.resource.data))
+                    && (request.resource.data.isActive == resource.data.isActive || !('isActive' in request.resource.data))
+                    && (request.resource.data.roles == resource.data.roles || !('roles' in request.resource.data))
+                    && (request.resource.data.customClaims == resource.data.customClaims || !('customClaims' in request.resource.data));
+                    // This rule allows changes to 'displayName', 'photoURL', 'preferences', 'lastLoginAt'.
+                    // 'updatedAt' is typically handled by serverTimestamp() and is allowed.
+
+      // User profile deletion (or marking as inactive) should be handled by a Cloud Function.
+      // Client-side deletion is disallowed.
+      allow delete: if false;
     }
+
+    // Add rules for other collections below if your app requires them.
+    // Example:
+    // match /posts/{postId} {
+    //   allow read: if true; // Anyone can read posts
+    //   allow write: if request.auth != null; // Only authenticated users can write posts
+    // }
   }
 }
